@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dad's Stock Terminal</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --panel-bg: #161b22;
+            --text-main: #c9d1d9;
+            --text-muted: #8b949e;
+            --accent: #2f81f7;
+            --border: #30363d;
+            --green: #3fb950;
+            --red: #f85149;
+            --ytd-bg: #1f2a3a;
+        }
+
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            padding: 20px 30px;
+            border-bottom: 1px solid var(--border);
+            background-color: var(--panel-bg);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 1.8rem;
+            color: white;
+        }
+
+        .status {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Table Container */
+        .table-container {
+            flex-grow: 1;
+            overflow: auto;
+            padding: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: right;
+        }
+
+        th, td {
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        th {
+            position: sticky;
+            top: 0;
+            background-color: var(--panel-bg);
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            cursor: pointer;
+            z-index: 10;
+            user-select: none;
+        }
+
+        th:hover {
+            color: white;
+            background-color: #21262d;
+        }
+
+        th.sort-asc::after { content: " ▲"; }
+        th.sort-desc::after { content: " ▼"; }
+
+        /* Left-align the first two columns */
+        th:nth-child(1), td:nth-child(1) { text-align: left; position: sticky; left: 0; background-color: var(--bg-color); z-index: 5; font-weight: bold; color: white;}
+        th:nth-child(2), td:nth-child(2) { text-align: left; color: var(--text-muted); font-size: 0.9rem;}
+        
+        /* Make table header for fixed column overlap correctly */
+        th:nth-child(1) { z-index: 15; background-color: var(--panel-bg); }
+
+        tbody tr {
+            cursor: pointer;
+            transition: background-color 0.1s;
+        }
+
+        tbody tr:hover {
+            background-color: #1c2128;
+        }
+
+        tbody tr:hover td:nth-child(1) {
+            background-color: #1c2128;
+        }
+
+        /* Value Colors */
+        .pos { color: var(--green); }
+        .neg { color: var(--red); }
+        .neutral { color: var(--text-muted); }
+
+        /* YTD Highlight */
+        .ytd-col {
+            background-color: var(--ytd-bg);
+            font-weight: bold;
+            font-size: 1.05rem;
+        }
+        th.ytd-col {
+            background-color: #253347;
+            color: white;
+        }
+
+        /* Modal / Chart Popup */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            width: 80%;
+            height: 70%;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .modal-header h2 { margin: 0; color: white; }
+        .close-btn {
+            background: none; border: none; color: var(--text-muted);
+            font-size: 1.5rem; cursor: pointer;
+        }
+        .close-btn:hover { color: white; }
+
+        .chart-wrapper {
+            flex-grow: 1;
+            position: relative;
+        }
+
+        /* Scrollbars */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-color); }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #777; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Dad's Portfolio Terminal</h1>
+        <div class="status" id="statusText">Initializing Server Connection...</div>
+    </div>
+
+    <div class="table-container">
+        <table id="stockTable">
+            <thead>
+                <tr>
+                    <th onclick="sortTable('ticker')">Ticker</th>
+                    <th onclick="sortTable('name')">Name</th>
+                    <th onclick="sortTable('price')">Price</th>
+                    <th onclick="sortTable('5d')">5D</th>
+                    <th onclick="sortTable('1m')">1M</th>
+                    <th onclick="sortTable('3m')">3M</th>
+                    <th onclick="sortTable('6m')">6M</th>
+                    <th class="ytd-col" onclick="sortTable('ytd')">YTD</th>
+                    <th onclick="sortTable('1y')">1Y</th>
+                    <th onclick="sortTable('5y')">5Y</th>
+                    <th onclick="sortTable('10y')">10Y</th>
+                    <th onclick="sortTable('max')">Max</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                </tbody>
+        </table>
+    </div>
+
+    <div class="modal-overlay" id="chartModal" onclick="closeModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2 id="modalTitle">Stock Chart</h2>
+                <button class="close-btn" onclick="closeModal(true)">&times;</button>
+            </div>
+            <div class="chart-wrapper">
+                <canvas id="modalChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const stocks = [
+            { ticker: 'MU', name: 'Micron Tech' }, { ticker: 'WMT', name: 'Walmart' }, { ticker: 'CVX', name: 'Chevron' },
+            { ticker: 'MP', name: 'MP Materials' }, { ticker: 'SMCI', name: 'Super Micro' }, { ticker: 'RSG', name: 'Republic Services' },
+            { ticker: 'WM', name: 'Waste Mgmt' }, { ticker: 'SCHW', name: 'Charles Schwab' }, { ticker: 'ANET', name: 'Arista Networks' },
+            { ticker: 'PSTG', name: 'Pure Storage' }, { ticker: 'AAPL', name: 'Apple' }, { ticker: 'GOOGL', name: 'Alphabet' },
+            { ticker: 'META', name: 'Meta Platforms' }, { ticker: 'JPM', name: 'JPMorgan Chase' }, { ticker: 'NVDA', name: 'NVIDIA' },
+            { ticker: 'ABBV', name: 'AbbVie' }, { ticker: 'AXP', name: 'American Express' }, { ticker: 'V', name: 'Visa' },
+            { ticker: 'RKLB', name: 'Rocket Lab' }, { ticker: 'DELL', name: 'Dell Tech' }, { ticker: 'TSLA', name: 'Tesla' },
+            { ticker: 'AMD', name: 'AMD' }, { ticker: 'AMZN', name: 'Amazon' }, { ticker: 'PANW', name: 'Palo Alto' },
+            { ticker: 'ONDS', name: 'Ondas' }, { ticker: 'MSFT', name: 'Microsoft' }, { ticker: 'BITF', name: 'Bitfarms' },
+            { ticker: 'PLTR', name: 'Palantir' }, { ticker: 'SOFI', name: 'SoFi' }, { ticker: 'NUAI', name: 'New Era' },
+            { ticker: 'IREN', name: 'IREN Ltd' }
+        ];
+
+        let tableData = []; 
+        let rawChartCache = {}; 
+        let sortCol = '';
+        let sortAsc = true;
+        let chartInstance = null;
+
+        window.onload = async () => {
+            const tbody = document.getElementById('tableBody');
+            
+            stocks.forEach(s => {
+                const tr = document.createElement('tr');
+                tr.id = `row-${s.ticker}`;
+                tr.innerHTML = `
+                    <td>${s.ticker}</td>
+                    <td>${s.name}</td>
+                    <td id="price-${s.ticker}">...</td>
+                    <td id="5d-${s.ticker}">...</td>
+                    <td id="1m-${s.ticker}">...</td>
+                    <td id="3m-${s.ticker}">...</td>
+                    <td id="6m-${s.ticker}">...</td>
+                    <td id="ytd-${s.ticker}" class="ytd-col">...</td>
+                    <td id="1y-${s.ticker}">...</td>
+                    <td id="5y-${s.ticker}">...</td>
+                    <td id="10y-${s.ticker}">...</td>
+                    <td id="max-${s.ticker}">...</td>
+                `;
+                tr.onclick = () => openChart(s.ticker, s.name);
+                tbody.appendChild(tr);
+            });
+
+            // Since it's our server now, we can blast all requests safely in batches of 10!
+            const batchSize = 10;
+            for (let i = 0; i < stocks.length; i += batchSize) {
+                const batch = stocks.slice(i, i + batchSize);
+                const endIdx = Math.min(i + batchSize, stocks.length);
+                
+                document.getElementById('statusText').innerText = `Fetching ${i + 1}-${endIdx} from custom backend...`;
+                
+                await Promise.all(batch.map(s => fetchAndProcessStock(s)));
+            }
+            
+            document.getElementById('statusText').innerText = `Live Data - System Online.`;
+        };
+
+        async function fetchAndProcessStock(stock) {
+            try {
+                // CALLING OUR OWN NETLIFY BACKEND SERVER
+                const res = await fetch(`/.netlify/functions/yahoo?ticker=${stock.ticker}`);
+                if (!res.ok) throw new Error("Server Error");
+                
+                const rawData = await res.json();
+
+                const result = rawData.chart.result[0];
+                const timestamps = result.timestamp;
+                const closes = result.indicators.quote[0].close;
+
+                let data = [];
+                for (let i = 0; i < timestamps.length; i++) {
+                    if (closes[i] !== null) {
+                        data.push({
+                            date: new Date(timestamps[i] * 1000).toISOString().split('T')[0],
+                            close: closes[i]
+                        });
+                    }
+                }
+
+                if (data.length === 0) return;
+
+                const oneYearAgo = new Date();
+                oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+                rawChartCache[stock.ticker] = data.filter(d => new Date(d.date) >= oneYearAgo);
+
+                const currentPrice = data[data.length - 1].close;
+
+                const getReturn = (targetDateStr) => {
+                    const targetTime = new Date(targetDateStr).getTime();
+                    let oldPrice = data[0].close; 
+                    
+                    for (let i = data.length - 1; i >= 0; i--) {
+                        if (new Date(data[i].date).getTime() <= targetTime) {
+                            oldPrice = data[i].close;
+                            break;
+                        }
+                    }
+                    return ((currentPrice - oldPrice) / oldPrice) * 100;
+                };
+
+                const today = new Date();
+                
+                const rowData = {
+                    ticker: stock.ticker,
+                    name: stock.name,
+                    price: currentPrice,
+                    '5d': getReturn(new Date(today).setDate(today.getDate() - 5)),
+                    '1m': getReturn(new Date(today).setMonth(today.getMonth() - 1)),
+                    '3m': getReturn(new Date(today).setMonth(today.getMonth() - 3)),
+                    '6m': getReturn(new Date(today).setMonth(today.getMonth() - 6)),
+                    'ytd': getReturn(new Date(today.getFullYear(), 0, 1)), 
+                    '1y': getReturn(new Date(today).setFullYear(today.getFullYear() - 1)),
+                    '5y': getReturn(new Date(today).setFullYear(today.getFullYear() - 5)),
+                    '10y': getReturn(new Date(today).setFullYear(today.getFullYear() - 10)),
+                    'max': ((currentPrice - data[0].close) / data[0].close) * 100
+                };
+
+                tableData.push(rowData);
+                updateRowUI(rowData);
+
+            } catch (error) {
+                console.error(`Error processing ${stock.ticker}:`, error);
+                document.getElementById(`price-${stock.ticker}`).innerText = "Error";
+            }
+        }
+
+        function formatPercent(val) {
+            if (val === undefined || isNaN(val)) return '-';
+            const sign = val >= 0 ? '+' : '';
+            return `${sign}${val.toFixed(2)}%`;
+        }
+
+        function getColorClass(val) {
+            if (val === undefined || isNaN(val)) return 'neutral';
+            return val >= 0 ? 'pos' : 'neg';
+        }
+
+        function updateRowUI(d) {
+            document.getElementById(`price-${d.ticker}`).innerText = `$${d.price.toFixed(2)}`;
+            
+            const fields = ['5d', '1m', '3m', '6m', 'ytd', '1y', '5y', '10y', 'max'];
+            fields.forEach(f => {
+                const el = document.getElementById(`${f}-${d.ticker}`);
+                if(el) {
+                    el.innerText = formatPercent(d[f]);
+                    el.className = f === 'ytd' ? `ytd-col ${getColorClass(d[f])}` : getColorClass(d[f]);
+                }
+            });
+        }
+
+        function sortTable(col) {
+            if (tableData.length === 0) return;
+
+            document.querySelectorAll('th').forEach(th => th.classList.remove('sort-asc', 'sort-desc'));
+
+            if (sortCol === col) {
+                sortAsc = !sortAsc; 
+            } else {
+                sortCol = col;
+                sortAsc = false; 
+            }
+
+            const clickedTh = event.target;
+            clickedTh.classList.add(sortAsc ? 'sort-asc' : 'sort-desc');
+
+            tableData.sort((a, b) => {
+                let valA = a[col];
+                let valB = b[col];
+                
+                if (typeof valA === 'string') {
+                    return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                } else {
+                    return sortAsc ? valA - valB : valB - valA;
+                }
+            });
+
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            
+            tableData.forEach(d => {
+                const tr = document.createElement('tr');
+                tr.onclick = () => openChart(d.ticker, d.name);
+                tr.innerHTML = `
+                    <td>${d.ticker}</td>
+                    <td>${d.name}</td>
+                    <td>$${d.price.toFixed(2)}</td>
+                    <td class="${getColorClass(d['5d'])}">${formatPercent(d['5d'])}</td>
+                    <td class="${getColorClass(d['1m'])}">${formatPercent(d['1m'])}</td>
+                    <td class="${getColorClass(d['3m'])}">${formatPercent(d['3m'])}</td>
+                    <td class="${getColorClass(d['6m'])}">${formatPercent(d['6m'])}</td>
+                    <td class="ytd-col ${getColorClass(d['ytd'])}">${formatPercent(d['ytd'])}</td>
+                    <td class="${getColorClass(d['1y'])}">${formatPercent(d['1y'])}</td>
+                    <td class="${getColorClass(d['5y'])}">${formatPercent(d['5y'])}</td>
+                    <td class="${getColorClass(d['10y'])}">${formatPercent(d['10y'])}</td>
+                    <td class="${getColorClass(d['max'])}">${formatPercent(d['max'])}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function openChart(ticker, name) {
+            const data = rawChartCache[ticker];
+            if (!data) return alert("Chart data is still loading, please wait a moment.");
+
+            document.getElementById('modalTitle').innerText = `${ticker} - 1 Year Chart`;
+            document.getElementById('chartModal').style.display = 'flex';
+
+            const labels = data.map(item => item.date);
+            const prices = data.map(item => item.close);
+            
+            const startPrice = prices[0];
+            const endPrice = prices[prices.length - 1];
+            const lineColor = endPrice >= startPrice ? '#3fb950' : '#f85149'; 
+            const bgColor = endPrice >= startPrice ? 'rgba(63, 185, 80, 0.1)' : 'rgba(248, 81, 73, 0.1)';
+
+            const ctx = document.getElementById('modalChart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Price',
+                        data: prices,
+                        borderColor: lineColor,
+                        backgroundColor: bgColor,
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        pointHoverRadius: 6,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false, color: '#30363d' } },
+                        y: { grid: { color: '#30363d' }, position: 'right' }
+                    }
+                }
+            });
+        }
+
+        function closeModal(force = false) {
+            if (force || event.target.id === 'chartModal') {
+                document.getElementById('chartModal').style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
