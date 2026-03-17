@@ -203,6 +203,34 @@
     0% { transform: translate(0, 0); }
     100% { transform: translate(-100%, 0); }
 }
+/* 📱 MOBILE PHONE MAGIC STYLES */
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 26px; /* Shrinks the giant title so it fits */
+                margin-top: 15px;
+            }
+            .news-ticker-wrap {
+                padding: 8px 0; /* Makes the top banner a little thinner */
+            }
+            .news-item {
+                font-size: 14px; /* Shrinks the news text slightly */
+                margin-right: 30px; /* Brings the headlines closer together so you see them faster */
+            }
+            .board {
+                padding: 15px 10px; /* Removes massive empty space on the sides */
+                gap: 15px;
+            }
+            .stock-card {
+                width: 90%; /* Forces the stock cards to stack neatly on top of each other */
+                padding: 15px;
+            }
+            .symbol {
+                font-size: 24px;
+            }
+            .price {
+                font-size: 28px;
+            }
+        }
     </style>
 </head>
 <body>
